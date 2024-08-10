@@ -20,15 +20,14 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
-    tasks.register("printVersionName") {
-        doLast {
-            val versionName = android.defaultConfig.versionName
-            println("v$versionName")
-        }
-    }
-
     buildTypes {
+        debug {
+            versionNameSuffix = ".dev"
+            isDebuggable = true
+        }
+
         release {
+            isDebuggable = false
             isMinifyEnabled = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -86,4 +85,13 @@ dependencies {
     androidTestImplementation(libs.rules)
 
     debugImplementation(libs.leakcanary.android)
+}
+
+tasks.register("printVersionName") {
+    doLast {
+        val versionName = android.defaultConfig.versionName
+        val buildType = gradle.startParameter.taskNames.find { it.contains("debug") || it.contains("release") } ?: "release"
+        val versionNameSuffix = if (buildType.contains("debug")) ".dev" else ""
+        println("Version: v$versionName$versionNameSuffix")
+    }
 }
