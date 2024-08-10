@@ -1,6 +1,5 @@
 
-![Build (Android)](https://github.com/nizarfadlan/Aplikasi-Github-User/workflows/Android%20CI/badge.svg)
-
+![Build (Android)](https://github.com/nizarfadlan/Aplikasi-Github-User/workflows/Android/badge.svg)
 ![GitHub stars](https://img.shields.io/github/stars/nizarfadlan/Aplikasi-Github-User?style=social)
 ![GitHub forks](https://img.shields.io/github/forks/nizarfadlan/Aplikasi-Github-User?style=social)
 ![GitHub watchers](https://img.shields.io/github/watchers/nizarfadlan/Aplikasi-Github-User?style=social)
