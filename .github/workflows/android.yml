@@ -1,0 +1,224 @@
+name: Android
+on:
+  push:
+    branches:
+      - release/*
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  JAVA_VERSION: '17'
+  JAVA_DIST: 'zulu'
+  BUILD_TOOLS_VERSION: '34.0.0'
+  API_KEY: ${{ secrets.API_KEY }}
+  GRADLE_CACHE_PATHS: |
+    ~/.gradle/caches
+    ~/.gradle/wrapper
+
+jobs:
+  setup:
+    runs-on: ubuntu-latest
+    outputs:
+      version_name: ${{ steps.get_version_name.outputs.version_name }}
+      gradle_cache_key: ${{ steps.cache_gradle.outputs.cache-hit }}
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set Up JDK
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DIST }}
+          cache: 'gradle'
+
+      - name: Cache Gradle
+        id: cache_gradle
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.GRADLE_CACHE_PATHS }}
+          key: ${{ runner.os }}-${{ hashFiles('**/*.gradle*') }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}-${{ hashFiles('**/buildSrc/**/*.kt') }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Get Version Name
+        id: get_version_name
+        run: |
+          VERSION_NAME=$(${{github.workspace}}/gradlew -q printVersionName)
+          echo "version_name=${VERSION_NAME}" >> $GITHUB_OUTPUT
+
+  lint:
+    needs: [ setup ]
+    name: Perform Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Restore Gradle cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.GRADLE_CACHE_PATHS }}
+          key: ${{ needs.setup.outputs.gradle_cache_key || runner.os }}-${{ hashFiles('**/*.gradle*') }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}-${{ hashFiles('**/buildSrc/**/*.kt') }}
+
+      - name: Set Up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DIST }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Build with Gradle
+        run: ./gradlew build
+
+      - name: Run lint
+        run: ./gradlew lintDebug
+
+      - name: Upload html test report
+        uses: actions/upload-artifact@v3
+        with:
+          name: lint.html
+          path: app/build/reports/lint-results-debug.html
+
+  build-and-release:
+    needs: [ lint, setup ]
+    name: Build Release signed APK and Bundle
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Restore Gradle cache
+        uses: actions/cache@v3
+        with:
+          path: ${{ env.GRADLE_CACHE_PATHS }}
+          key: ${{ needs.setup.outputs.gradle_cache_key || runner.os }}-${{ hashFiles('**/*.gradle*') }}-${{ hashFiles('**/gradle/wrapper/gradle-wrapper.properties') }}-${{ hashFiles('**/buildSrc/**/*.kt') }}
+
+      - name: Set Up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v3
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: ${{ env.JAVA_DIST }}
+
+      - name: Grant execute permission for gradlew
+        run: chmod +x gradlew
+
+      - name: Generate file name env var
+        run: |
+          VERSION_NAME="${{ needs.setup.outputs.version_name }}"
+          RELEASE_MESSAGE="Release ${VERSION_NAME}"
+          TAG_MESSAGE="release-${VERSION_NAME}"
+          OUTPUT_NAME_RELEASE="nutriLog-${VERSION_NAME}-release"
+          OUTPUT_NAME_DEBUG="nutriLog-${VERSION_NAME}-debug"
+          echo "TAG_NAME=${TAG_MESSAGE}" >> $GITHUB_ENV
+          echo "RELEASE_NAME=${RELEASE_MESSAGE}" >> $GITHUB_ENV
+          echo "OUTPUT_NAME_RELEASE=${OUTPUT_NAME_RELEASE}" >> $GITHUB_ENV
+          echo "OUTPUT_NAME_DEBUG=${OUTPUT_NAME_DEBUG}" >> $GITHUB_ENV
+
+      - name: Run gradle tests
+        run: ./gradlew test
+
+      - name: Build with Gradle
+        run: ./gradlew build
+
+      - name: Build APK Debug
+        run: bash ./gradlew assembleDebug --stacktrace
+
+      - name: Move APK Debug
+        run: mv app/build/outputs/apk/debug/app-debug.apk app/build/outputs/apk/debug/${{ env.OUTPUT_NAME_DEBUG }}.apk
+
+      - name: Upload APK Debug
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.OUTPUT_NAME_DEBUG }}
+          path: app/build/outputs/apk/debug/${{ env.OUTPUT_NAME_DEBUG }}.apk
+
+      - name: Build APK Release
+        run: bash ./gradlew assembleRelease --stacktrace
+
+      - name: Sign APK Release
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app_apk
+        with:
+          releaseDirectory: app/build/outputs/apk/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION }}
+          API_KEY: ${{ env.API_KEY }}
+
+      - name: Move Signed APK Release
+        run: mv ${{steps.sign_app_apk.outputs.signedReleaseFile}} app/build/outputs/apk/release/${{ env.OUTPUT_NAME_RELEASE }}.apk
+
+      - name: Upload APK Release
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.OUTPUT_NAME_RELEASE }}
+          path: app/build/outputs/apk/release/${{ env.OUTPUT_NAME_RELEASE }}.apk
+
+      - name: Build release AAB Release
+        run: bash ./gradlew bundleRelease --stacktrace
+
+      - name: Sign Bundle Release
+        uses: r0adkll/sign-android-release@v1
+        id: sign_app_bundle
+        with:
+          releaseDirectory: app/build/outputs/bundle/release
+          signingKeyBase64: ${{ secrets.SIGNING_KEY }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+          keyPassword: ${{ secrets.KEY_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION }}
+          API_KEY: ${{ env.API_KEY }}
+
+      - name: Move Signed Bundle Release
+        run: mv ${{steps.sign_app_bundle.outputs.signedReleaseFile}} app/build/outputs/bundle/release/${{ env.OUTPUT_NAME_RELEASE }}.aab
+
+      - name: Upload Signed AAB Release
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ env.OUTPUT_NAME_RELEASE }}
+          path: app/build/outputs/bundle/release/${{ env.OUTPUT_NAME_RELEASE }}.aab
+
+      - name: Check if Release Exists
+        id: check_release
+        run: |
+          if curl --head --fail --silent --location "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ env.TAG_NAME }}"; then
+            echo "release_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "release_exists=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create Release
+        if: steps.check_release.outputs.release_exists != 'true'
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ env.TAG_NAME }}
+          release_name: ${{ env.RELEASE_NAME }}
+
+      - name: List files in the directory
+        run: ls -R app/build/outputs
+
+      - name: Upload Release APK and Bundle
+        uses: softprops/action-gh-release@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.RELEASE_NAME }}
+          generate_release_notes: true
+          draft: false
+          prerelease: false
+          append_body: true
+          files: |
+            app/build/outputs/bundle/release/${{ env.OUTPUT_NAME_RELEASE }}.aab
+            app/build/outputs/apk/release/${{ env.OUTPUT_NAME_RELEASE }}.apk
