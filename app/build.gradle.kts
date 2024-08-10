@@ -88,10 +88,6 @@ dependencies {
 }
 
 tasks.register("printVersionName") {
-    doLast {
-        val versionName = android.defaultConfig.versionName
-        val buildType = gradle.startParameter.taskNames.find { it.contains("debug") || it.contains("release") } ?: "release"
-        val versionNameSuffix = if (buildType.contains("debug")) ".dev" else ""
-        println("Version: v$versionName$versionNameSuffix")
-    }
+    val versionName = android.defaultConfig.versionName
+    println("v$versionName")
 }
