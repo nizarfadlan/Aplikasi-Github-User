@@ -173,16 +173,7 @@ jobs:
           keyPassword: ${{ secrets.KEY_PASSWORD }}
         env:
           BUILD_TOOLS_VERSION: ${{ env.BUILD_TOOLS_VERSION }}
-      - name: Check if Release Exists
-        id: check_release
-        run: |
-          if curl --head --fail --silent --location "https://api.github.com/repos/${{ github.repository }}/releases/tags/${{ needs.setup.outputs.version_name }}"; then
-            echo "release_exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "release_exists=false" >> $GITHUB_OUTPUT
-          fi
       - name: Create GitHub Release
-        if: steps.check_release.outputs.release_exists != 'true'
         id: create_release
         uses: actions/create-release@v1
         env:

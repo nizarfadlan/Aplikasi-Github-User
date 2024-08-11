@@ -22,6 +22,9 @@
 -keep class com.nizarfadlan.core.data.datasource.** { *; }
 -keepclassmembers class com.nizarfadlan.core.data.datasource.** { *; }
 
+-keep class com.google.android.play.core.splitcompat.** { *; }
+-keep class com.google.android.play.core.splitinstall.** { *; }
+
 -keep class androidx.** { *; }
 -dontwarn androidx.**
 -keep class com.google.android.** { *; }

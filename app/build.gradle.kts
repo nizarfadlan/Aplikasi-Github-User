@@ -84,6 +84,13 @@ dependencies {
     androidTestImplementation(libs.espresso.idling.resource)
     androidTestImplementation(libs.rules)
 
+    // Navigation
+    androidTestImplementation(libs.androidx.navigation.testing)
+
+    // Fragment
+    debugImplementation(libs.androidx.fragment.testing)
+    debugImplementation(libs.androidx.fragment.testing.manifest)
+
     debugImplementation(libs.leakcanary.android)
 }
 
